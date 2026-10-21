@@ -1,76 +1,101 @@
+import threading
+import time
+import cv2
+import battery
+
 from djitellopy import Tello
 
-tello = Tello()
+#global variables
+counter = 0 #counter to limit the number of attempts to find a mission pad
+found = 0 #counter for found mission pads
+pad_ids = [] #list of found mission pad ids
 
+tello = Tello()
 tello.connect()
 
-batteryValue = tello.get_battery()
-print(f"Battery value: {batteryValue}%")
+battery.getBatteryValue(tello) #checks battery value before flight and exits if battery is too low
 
-if(batteryValue < 20):
-    print("Battery too low for flight. Please charge the battery.")
-    tello.end()
-    exit()
-
+#settings for the tello drone
 tello.enable_mission_pads()
-tello.set_mission_pad_detection_direction(2)
+tello.set_mission_pad_detection_direction(0) # 0 = downward, 1 = forward, 2 = both
 
+tello.takeoff()
 
-""" class pad:
-    id
-    x
-    y
-    z
+# height = tello.get_height()
+# print(f"Height: {height} cm")
 
-    def __init__(self, id, x, y, z):
-        self.id = id  # Instance attribute
-        self.x = x
-        self.y = y
-        self.z = z
-         
-         """     
-         
-def search_for_pad_spiral(currentID,spiral_mult=1):
-    if(spiral_mult >= 50):
-        return -1
-    tello.move_forward(20*spiral_mult)
-    if(currentID == tello.get_mission_pad_id()):
-        tello.rotate_clockwise(90)
-        return search_for_pad_spiral(current_id, spiral_mult + 1)
+# tello.move_down(30)
 
-    return detected_id
+def videoRecorder():
+    # 1. Videostream einschalten
+    tello.streamon()
 
+    # 2. Auf die untere Kamera umschalten
+    # 0 = untere Kamera, 1 = Vorwärtskamera 
+    tello.set_video_direction(0)
 
-def move_to_pad(target_id):
+    # Frame-Reader starten, um die Bilder abzugreifen
+    frame_read = tello.get_frame_read()
+
+    print("Videostream läuft. Drücke 'q' im Videofenster, um das Programm zu beenden.")
+
+    while True:
+        # Aktuelles Bild von der Kamera holen
+        img = frame_read.frame
+            
+        # Falls das Bild geladen wurde, anzeigen
+        if img is not None:
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB) # Color conversion from BGR to RGB
+            img = cv2.resize(img, (960, 720)) # Resize the image to 960x720
+            cv2.imshow("Tello - Untere Kamera", img)
+            
+        # Abbruch, wenn die Taste 'q' gedrückt wird
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+#function to find mission pads
+def find_mission_pad():
+
+    global counter, found
+
+    while counter < 10 and found < 2:
+
+        pad_id = tello.get_mission_pad_id()
+        print(f"pad_id: {pad_id}")
+
+        if pad_id != -1 and pad_id not in pad_ids:
+            on_pad_found(pad_id)
+
+        else :
+            tello.move_forward(30)
+            counter += 1
+            print(counter)
+
+#function for interaction with found mission pads
+def on_pad_found(pad_id):
+
+    global found
+
     x = tello.get_mission_pad_distance_x()
     y = tello.get_mission_pad_distance_y()
     z = tello.get_mission_pad_distance_z()
-    tello.go_xyz_speed_mid(x, y, z, 20, target_id)
+    
+    tello.go_xyz_speed(x, y, z, 10)
+    
     tello.land()
 
+    if found < 2:
+        found += 1
 
-desired_pad_count = 2
-pad_ids = []
-
-# Start on current pad.
-tello.takeoff()
-tello.move_up(40)
-
-current_id = tello.get_mission_pad_id()
-pad_ids.append(current_id)
-
-while len(pad_ids) < desired_pad_count:
-    new_pad_id = search_for_pad_spiral(current_id)
-    batteryValue = tello.get_battery()
-    print(f"Battery value: {batteryValue}%")
-
-    if new_pad_id not in pad_ids:
-        current_id = new_pad_id
-        move_to_pad(new_pad_id)
+        time.sleep(5)
         tello.takeoff()
-        pad_ids.append(new_pad_id)
+        pad_ids.append(pad_id) #adds found mission pad to the list
 
-print("Reached desired mission pad count.")
-tello.end()
-        
+    else:
+        tello.end()
 
+t1 = threading.Thread(target=videoRecorder)
+t2 = threading.Thread(target=find_mission_pad)
+
+t1.start()
+t2.start()
