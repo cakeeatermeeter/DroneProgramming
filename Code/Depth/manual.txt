@@ -6,7 +6,7 @@ source .venv/bin/activate    oder    .venv\Scripts\activate.bat
 
 Libs
 
-python3 -m pip install transformers pillow
+python3 -m pip install transformers pillow     oder    pip install ...
 python3 -m pip install torch torchvision
 python3 -m pip install transformers pillow numpy matplotlib
 python3 -m pip install djitellopy opencv-python
